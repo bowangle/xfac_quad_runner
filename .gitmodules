@@ -1,3 +1,4 @@
 [submodule "extern/xfac_quad"]
 	path = extern/xfac_quad
 	url = https://github.com/bowangle/xfac_quad.git
+	ignore = dirty
