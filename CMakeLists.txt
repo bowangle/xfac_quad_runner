@@ -48,13 +48,17 @@ if(XF_QD_RUNNER_BUILD_TESTS)
 
     # One entry per test/test_<name>.cpp -> target xf_qd_runner_test_<name>
     set(_xf_qd_runner_tests
-        runner)
+        runner
+        determinism)
 
     foreach(_name IN LISTS _xf_qd_runner_tests)
         add_executable(xf_qd_runner_test_${_name} test/test_${_name}.cpp)
         target_link_libraries(xf_qd_runner_test_${_name} PRIVATE xf_qd_runner_deps)
         target_compile_options(xf_qd_runner_test_${_name} PRIVATE
             -Wall -Wextra -Wreorder -Wshadow)
+        target_compile_options(xf_qd_runner_test_${_name} PRIVATE -UNDEBUG)
+        target_include_directories(xf_qd_runner_test_${_name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/test)
         add_test(NAME xf_qd_runner_test_${_name}
                  COMMAND xf_qd_runner_test_${_name})
     endforeach()
