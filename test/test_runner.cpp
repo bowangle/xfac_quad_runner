@@ -2,6 +2,6 @@
 #include "xf-quad-param.hpp"
 
 
-void main(){
+int main(){
     std::cout << "Ok";
 }

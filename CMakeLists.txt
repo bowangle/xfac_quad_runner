@@ -17,12 +17,24 @@ add_subdirectory(extern/xfac_quad)
 
 # ---- own paths ----------------------------------------------------------------
 set(XF_QD_RUNNER_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(SPDLOG_INCLUDE_DIR       ${CMAKE_CURRENT_SOURCE_DIR}/extern/spdlog/include)
+
+if(NOT EXISTS ${SPDLOG_INCLUDE_DIR}/spdlog/spdlog.h)
+    message(FATAL_ERROR
+        "spdlog not found at ${SPDLOG_INCLUDE_DIR}.\n"
+        "Run: git submodule update --init --recursive")
+endif()
 
 # ---- interface target: carries our headers + transitive deps ------------------
 add_library(xf_qd_runner_deps INTERFACE)
 
 target_include_directories(xf_qd_runner_deps INTERFACE
     ${XF_QD_RUNNER_INCLUDE_DIR})
+
+# Header-only spdlog (with its bundled fmt). SYSTEM so its own warnings don't
+# surface under -Wall -Wextra -Wshadow.
+target_include_directories(xf_qd_runner_deps SYSTEM INTERFACE
+    ${SPDLOG_INCLUDE_DIR})
 
 target_compile_features(xf_qd_runner_deps INTERFACE cxx_std_20)
 
