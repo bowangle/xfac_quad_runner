@@ -117,6 +117,8 @@ struct TCI2_1D_runner_param {
             .pivot1            = pivot1,
             .fullPiv           = fullPiv,
             .nRookIter         = nRookIter,
+            .weight            = {},
+            .cond              = {},
             .useCachedFunction = useCachedFunction_xfac_lvl
         };
     }

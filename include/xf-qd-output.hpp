@@ -2,13 +2,36 @@
 
 #include <vector>
 #include <iostream>
+#include <iomanip>
 #include <complex>
 #include <functional>
 #include <fstream>
 #include <string>
+#include <limits>
 
 #include <grid.h>
 #include <xfac_quad/xfac_quad.hpp>
+
+// Linespace
+template <typename Scalar>
+std::vector<Scalar> linspace(Scalar a, Scalar b, int N)
+{
+    std::vector<Scalar> x;
+    x.reserve(N);
+
+    if (N == 1) {
+        x.push_back(a);
+        return x;
+    }
+
+    Scalar step = (b - a) / Scalar(N - 1);
+
+    for (int i = 0; i < N; ++i) {
+        x.push_back(a + Scalar(i) * step);
+    }
+
+    return x;
+}
 
 template <typename Scalar>
 void compute_stats(
@@ -154,8 +177,8 @@ std::ostream& operator<<(std::ostream& os, const TTErrorOnGrid<Scalar>& e)
 // Error calculation:
 template <typename Scalar, typename Sint>
 TTErrorOnGrid<Scalar> error_TT_on_grid_point(
-    const TensorTrain<std::complex<Scalar>>& tt,
-    std::function<std::complex<Scalar>(MultiIndex)> gf_id,
+    const xfac_quad::TensorTrain<std::complex<Scalar>>& tt,
+    std::function<std::complex<Scalar>(std::vector<int>)> gf_id,
     const QTGrid<Scalar, Sint>& grid,
     int nb_point)
 {
@@ -177,12 +200,12 @@ TTErrorOnGrid<Scalar> error_TT_on_grid_point(
     for (int i = 0; i < nb_point; i++)
     {
         Scalar x = l_point[i];
-        const MultiIndex id = grid.coord_to_id(x);
+        std::vector<int> id = grid.coord_to_id(x);
 
         Complex ref_i = gf_id(id);
         l_ref_i[i] = ref_i;
 
-        Complex res_tt = tt.eval(id.data);
+        Complex res_tt = tt.eval(id);
         l_res_tt[i] = res_tt;
 
         Complex diff = ref_i - res_tt;
