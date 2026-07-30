@@ -1,3 +1,4 @@
+#pragma once
 
 class TCI_param{
     public:

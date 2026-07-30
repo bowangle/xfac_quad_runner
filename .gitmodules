@@ -2,3 +2,6 @@
 	path = extern/xfac_quad
 	url = https://github.com/bowangle/xfac_quad.git
 	ignore = dirty
+[submodule "extern/spdlog"]
+	path = extern/spdlog
+	url = https://github.com/gabime/spdlog.git

@@ -1,5 +1,19 @@
+#pragma once
 
-#include <grid.h>
+#include <complex>
+#include <string>
+#include <sstream>
+#include <iomanip>
+#include <functional>
+#include <unordered_map>
+#include <memory>
+
+#include <spdlog/spdlog.h>
+
+#include <grid.h> // QTgrid_quad.
+#include <xfac_quad/xfac_quad.hpp>
+
+#include "xf-quad-param.hpp"
 
 template <typename Scalar, typename Sint>
 class TCI_Runner{
@@ -16,7 +30,6 @@ class TCI_Runner{
     int counter_cached = 0;
     std::shared_ptr<spdlog::logger> const logger;
 
-    
     TCI_Runner(
         QTGrid<Scalar, Sint> grid_,
         TCI_param tci_param_,
