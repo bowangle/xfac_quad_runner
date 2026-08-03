@@ -101,12 +101,42 @@ ConfigResult<Scalar> run_config(const std::string& type_label,
     // ---- fit ----
     auto test_func = pick_test_func<Scalar>();
 
+    const Real pi_value = pi<Real>();
+    const std::vector<Real> discontinuity_points{
+        pi_value / Real(8),
+        pi_value / Real(6),
+        pi_value / Real(4)
+    };
+
     const std::string prefix = "test/output/" + ctx;
     out.tt_file = prefix + ".tt";
 
     TCI2_1D_Runner<Scalar, Sint> runner(grid, param, test_func);
     runner.fit(/*additional_pivot=*/{}, /*verbose=*/true, /*do_save=*/true,
-               prefix, kNbPointRes);
+               prefix, kNbPointRes, discontinuity_points);
+
+    // ---- reload f_values JSON and require an exact decimal roundtrip ----
+    const auto [loaded_value,
+                loaded_discontinuities,
+                loaded_f_discontinuities] =
+        load_fvalues_from_json<Complex>(prefix + "_f_values.json");
+
+    const Complex expected_value =
+        TCI2_1D_Runner<Scalar, Sint>::to_complex(test_func(grid.get_b()));
+
+    std::vector<Complex> expected_f_discontinuities;
+    expected_f_discontinuities.reserve(discontinuity_points.size());
+    for (const Real& point : discontinuity_points) {
+        expected_f_discontinuities.push_back(
+            TCI2_1D_Runner<Scalar, Sint>::to_complex(test_func(point)));
+    }
+
+    check(loaded_value == expected_value,
+          ctx, "f_values endpoint value reloads exactly");
+    check(loaded_discontinuities == discontinuity_points,
+          ctx, "f_values discontinuity points reload exactly");
+    check(loaded_f_discontinuities == expected_f_discontinuities,
+          ctx, "f_values at discontinuities reload exactly");
 
     out.n_calls  = runner.counter.load();
     out.n_cached = runner.counter_cached.load();

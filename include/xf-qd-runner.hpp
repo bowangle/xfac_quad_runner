@@ -20,6 +20,8 @@
 #include <grid.h> // QTgrid_quad.
 #include <xfac_quad/xfac_quad.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include "xf-quad-param.hpp"
 #include "xf-qd-output.hpp"
 
@@ -210,6 +212,21 @@ class TCI2_1D_Runner{
         return oss.str();
     }
 
+    // Save real values as strings so JSON parsing does not narrow
+    // dd_128 or float128 values through double.
+    std::string to_string_for_save(const std::vector<Real>& v)
+    {
+        std::ostringstream oss;
+        oss << "[";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            oss << "\"" << to_string(v[i]) << "\"";
+            if (i + 1 < v.size()) oss << ", ";
+        }
+        oss << "]";
+        return oss.str();
+    }
+
     // ---- to_string for vector<Complex> ----
     std::string to_string_for_save(const std::vector<Complex>& v)
     {
@@ -224,6 +241,32 @@ class TCI2_1D_Runner{
         return oss.str();
     }
 
+    static std::string double_to_exact_string(double value)
+    {
+        std::ostringstream oss;
+        oss << std::scientific
+            << std::setprecision(std::numeric_limits<double>::max_digits10)
+            << value;
+        return oss.str();
+    }
+
+    static void write_dd128_exact_real(std::ostream& out, const dd_128& value)
+    {
+        out << "{\"hi\": \"" << double_to_exact_string(value.x[0])
+            << "\", \"lo\": \"" << double_to_exact_string(value.x[1])
+            << "\"}";
+    }
+
+    static void write_dd128_exact_complex(std::ostream& out,
+                                          const Cdd_128& value)
+    {
+        out << "{\"real\": ";
+        write_dd128_exact_real(out, value.real());
+        out << ", \"imag\": ";
+        write_dd128_exact_real(out, value.imag());
+        out << "}";
+    }
+
     void save_to_json(
         const std::string& filename,
         const Complex& value,
@@ -234,10 +277,33 @@ class TCI2_1D_Runner{
         file << "{\n";
         file << "  \"value\": \"" << to_string(value) << "\",\n";
         file << "  \"l_discontinuity\": "
-            << to_string(l_discontinuity) << ",\n";
+            << to_string_for_save(l_discontinuity) << ",\n";
         file << "  \"l_f_discontinuity\": "
-            << to_string_for_save(l_f_discontinuity) << "\n";
-        file << "}\n";
+            << to_string_for_save(l_f_discontinuity);
+
+        if constexpr (std::is_same_v<Real, dd_128>) {
+            file << ",\n  \"dd128_exact\": {\n";
+
+            file << "    \"value\": ";
+            write_dd128_exact_complex(file, value);
+            file << ",\n";
+
+            file << "    \"l_discontinuity\": [";
+            for (std::size_t i = 0; i < l_discontinuity.size(); ++i) {
+                if (i != 0) file << ", ";
+                write_dd128_exact_real(file, l_discontinuity[i]);
+            }
+            file << "],\n";
+
+            file << "    \"l_f_discontinuity\": [";
+            for (std::size_t i = 0; i < l_f_discontinuity.size(); ++i) {
+                if (i != 0) file << ", ";
+                write_dd128_exact_complex(file, l_f_discontinuity[i]);
+            }
+            file << "]\n  }";
+        }
+
+        file << "\n}\n";
     }
 
     // ---- helpers to convert Scalar <-> Complex ----
@@ -428,3 +494,157 @@ class TCI2_1D_Runner{
     }
 
 };
+
+
+// =========================================================================
+// Free functions for loading f_value JSON data saved by save_to_json()
+// =========================================================================
+
+/// Parse directly into Real so high-precision values never pass through
+/// double or long double. This works with the stream extractors provided for
+/// double, dd_128, and boost::multiprecision::float128.
+template <typename Real>
+Real parse_real_str(const std::string& s)
+{
+    std::istringstream input(s);
+    Real value;
+    input >> value;
+    if (!input) {
+        throw std::runtime_error("parse_real_str: invalid value \"" + s + "\"");
+    }
+
+    input >> std::ws;
+    if (!input.eof()) {
+        throw std::runtime_error(
+            "parse_real_str: trailing characters in \"" + s + "\"");
+    }
+    return value;
+}
+
+/// Parse a complex number from a string produced by to_string(), e.g.
+/// "-5.00e-01+8.66e-01j" or "3.14e+00-2.72e+00j".
+/// Also handles the parenthesised form from to_string_for_save(),
+/// e.g. "(-5.00e-01+8.66e-01j)".
+template <typename Complex>
+Complex parse_complex_str(const std::string& s)
+{
+    using Real = typename Complex::value_type;
+
+    std::string str = s;
+
+    // Strip optional wrapping parentheses (from to_string_for_save)
+    if (!str.empty() && str.front() == '(' && str.back() == ')') {
+        str = str.substr(1, str.size() - 2);
+    }
+
+    // Strip trailing 'j'
+    if (!str.empty() && str.back() == 'j') {
+        str.pop_back();
+    }
+
+    // Find the sign that separates real and imaginary parts.
+    // It is the last '+' or '-' whose predecessor is not 'e'/'E'
+    // (to avoid matching the exponent sign in scientific notation).
+    std::size_t split_pos = std::string::npos;
+    for (std::size_t i = str.size() - 1; i > 0; --i) {
+        if ((str[i] == '+' || str[i] == '-') &&
+            str[i - 1] != 'e' && str[i - 1] != 'E')
+        {
+            split_pos = i;
+            break;
+        }
+    }
+
+    if (split_pos == std::string::npos) {
+        throw std::runtime_error(
+            "parse_complex_str: cannot split real/imag in \"" + s + "\"");
+    }
+
+    Real re = parse_real_str<Real>(str.substr(0, split_pos));
+    Real im = parse_real_str<Real>(str.substr(split_pos));
+    return Complex(re, im);
+}
+
+inline dd_128 load_dd128_exact_real(const nlohmann::json& j)
+{
+    const double hi = parse_real_str<double>(j.at("hi").get<std::string>());
+    const double lo = parse_real_str<double>(j.at("lo").get<std::string>());
+    return dd_128(dd_real(hi, lo));
+}
+
+inline Cdd_128 load_dd128_exact_complex(const nlohmann::json& j)
+{
+    return Cdd_128(load_dd128_exact_real(j.at("real")),
+                    load_dd128_exact_real(j.at("imag")));
+}
+
+/// Load f_value data from a JSON file previously written by
+/// TCI2_1D_Runner::save_to_json().
+/// Returns {value, l_discontinuity, l_f_discontinuity}.
+template <typename Complex>
+std::tuple<Complex,
+           std::vector<typename Complex::value_type>,
+           std::vector<Complex>>
+load_fvalues_from_json(const std::string& filename)
+{
+    using Real = typename Complex::value_type;
+
+    std::ifstream file(filename);
+    if (!file) {
+        throw std::runtime_error("load_fvalues_from_json: cannot open \""
+                                 + filename + "\"");
+    }
+
+    nlohmann::json j;
+    file >> j;
+
+    if constexpr (std::is_same_v<Real, dd_128>) {
+        // New dd_128 files carry an exact representation of both underlying
+        // doubles. Older files have no such section and use the decimal
+        // compatibility path below.
+        if (j.contains("dd128_exact")) {
+            const auto& exact = j.at("dd128_exact");
+
+            Complex value = load_dd128_exact_complex(exact.at("value"));
+
+            std::vector<Real> l_discontinuity;
+            for (const auto& x : exact.at("l_discontinuity")) {
+                l_discontinuity.push_back(load_dd128_exact_real(x));
+            }
+
+            std::vector<Complex> l_f_discontinuity;
+            for (const auto& x : exact.at("l_f_discontinuity")) {
+                l_f_discontinuity.push_back(load_dd128_exact_complex(x));
+            }
+
+            return {value, l_discontinuity, l_f_discontinuity};
+        }
+    }
+
+    // Decimal compatibility representation, used for double/float128 and
+    // when loading old files. A double target loading a dd_128 file also takes
+    // this path rather than reading dd128_exact.
+    Complex value = parse_complex_str<Complex>(j.at("value").get<std::string>());
+
+    std::vector<Real> l_discontinuity;
+    for (const auto& x : j.at("l_discontinuity")) {
+        if (x.is_string()) {
+            l_discontinuity.push_back(
+                parse_real_str<Real>(x.get<std::string>()));
+        } else {
+            // Backward compatibility with older files that stored JSON
+            // numbers. Their precision may already have been narrowed by
+            // the JSON parser when Real is wider than double.
+            l_discontinuity.push_back(
+                parse_real_str<Real>(x.dump()));
+        }
+    }
+
+    std::vector<Complex> l_f_discontinuity;
+    for (const auto& s : j.at("l_f_discontinuity")) {
+        l_f_discontinuity.push_back(
+            parse_complex_str<Complex>(s.get<std::string>()));
+    }
+
+    return {value, l_discontinuity, l_f_discontinuity};
+}
