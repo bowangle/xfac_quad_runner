@@ -209,8 +209,8 @@ ConfigResult<Scalar> run_config(const std::string& type_label,
             }
         }
         check(shapes_ok, ctx, "roundtrip core shapes match");
-        check(roundtrip_diff <= Eigen::NumTraits<Real>::epsilon() * Real(10),
-              ctx, "save/load roundtrip is lossless");
+        check(roundtrip_diff == Real(0),
+              ctx, "save/load roundtrip is exactly lossless");
     }
 
     out.completed = true;
