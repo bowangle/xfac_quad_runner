@@ -3,8 +3,10 @@
 #include "test_common.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <type_traits>
+#include <nlohmann/json.hpp>
 
 using testing::check;
 
@@ -38,14 +40,24 @@ void test_roundtrip(const std::string& type_label)
     const TCI2_1D_runner_param<Scalar> saved(7, 123, 45, opts);
 
     saved.save(path);
-    const TCI2_1D_runner_param<Scalar> loaded(path);
+
+    std::ifstream input(path);
+    nlohmann::json saved_json;
+    input >> saved_json;
+    check(!saved_json.contains("pivot1"), ctx, "pivot1 is not saved");
+
+    const TCI2_1D_runner_param<Scalar> loaded(path, saved.pivot1);
+    const TCI2_1D_runner_param<Scalar> loaded_without_pivot(path);
 
     check(saved.nBit == loaded.nBit, ctx, "nBit roundtrips exactly");
     check(saved.nb_iter == loaded.nb_iter, ctx, "nb_iter roundtrips exactly");
     check(saved.bondDim == loaded.bondDim, ctx, "bondDim roundtrips exactly");
     check(exactly_equal(saved.reltol, loaded.reltol), ctx,
           "reltol roundtrips exactly");
-    check(saved.pivot1 == loaded.pivot1, ctx, "pivot1 roundtrips exactly");
+    check(saved.pivot1 == loaded.pivot1, ctx,
+          "pivot1 can be supplied when loading");
+    check(loaded_without_pivot.pivot1.empty(), ctx,
+          "pivot1 defaults to empty when loading");
     check(saved.fullPiv == loaded.fullPiv, ctx, "fullPiv roundtrips exactly");
     check(saved.nRookIter == loaded.nRookIter, ctx,
           "nRookIter roundtrips exactly");

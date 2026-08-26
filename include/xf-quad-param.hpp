@@ -151,9 +151,11 @@ struct TCI2_1D_runner_param {
         validate_pivot();
     }
 
-    /// Load a configuration previously written by save().
-    explicit TCI2_1D_runner_param(const std::string& path)
-        : TCI2_1D_runner_param(load_json(path))
+    /// Load a configuration previously written by save(). The first pivot is
+    /// run-specific and is therefore supplied separately rather than loaded.
+    explicit TCI2_1D_runner_param(const std::string& path,
+                                  std::vector<int> pivot1_ = {})
+        : TCI2_1D_runner_param(load_json(path), std::move(pivot1_))
     {}
 
     /// Save this configuration to exactly `path` as JSON.
@@ -163,7 +165,6 @@ struct TCI2_1D_runner_param {
             {"nb_iter", nb_iter},
             {"bondDim", bondDim},
             {"reltol", xf_qd_detail::real_to_string(reltol)},
-            {"pivot1", pivot1},
             {"fullPiv", fullPiv},
             {"nRookIter", nRookIter},
             {"cache", xf_qd_detail::cache_name(cache)}
@@ -230,18 +231,18 @@ private:
         int nb_iter;
         int bondDim;
         Real reltol;
-        std::vector<int> pivot1;
         bool fullPiv;
         int nRookIter;
         CacheLevel cache;
     };
 
-    explicit TCI2_1D_runner_param(LoadedParam loaded)
+    explicit TCI2_1D_runner_param(LoadedParam loaded,
+                                  std::vector<int> pivot1_)
         : nBit(loaded.nBit),
           nb_iter(loaded.nb_iter),
           bondDim(loaded.bondDim),
           reltol(std::move(loaded.reltol)),
-          pivot1(std::move(loaded.pivot1)),
+          pivot1(std::move(pivot1_)),
           fullPiv(loaded.fullPiv),
           nRookIter(loaded.nRookIter),
           cache(loaded.cache),
@@ -278,7 +279,6 @@ private:
             j.at("nb_iter").get<int>(),
             j.at("bondDim").get<int>(),
             std::move(loaded_reltol),
-            j.at("pivot1").get<std::vector<int>>(),
             j.at("fullPiv").get<bool>(),
             j.at("nRookIter").get<int>(),
             xf_qd_detail::cache_from_name(j.at("cache").get<std::string>())
