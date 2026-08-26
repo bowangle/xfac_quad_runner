@@ -49,7 +49,8 @@ if(XF_QD_RUNNER_BUILD_TESTS)
     # One entry per test/test_<name>.cpp -> target xf_qd_runner_test_<name>
     set(_xf_qd_runner_tests
         runner
-        determinism)
+        determinism
+        param)
 
     foreach(_name IN LISTS _xf_qd_runner_tests)
         add_executable(xf_qd_runner_test_${_name} test/test_${_name}.cpp)
