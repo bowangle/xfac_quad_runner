@@ -218,6 +218,93 @@ ConfigResult<Scalar> run_config(const std::string& type_label,
 }
 
 // ============================================================
+// Optional left-limit metadata must not change the fitted function.
+// ============================================================
+template <typename Scalar>
+void check_left_limit_metadata(const std::string& type_label)
+{
+    using Real = typename Eigen::NumTraits<Scalar>::Real;
+    using Complex = std::complex<Real>;
+    using Sint = util::i128;
+    using Runner = TCI2_1D_Runner<Scalar, Sint>;
+
+    constexpr int n_bit = 6;
+    QTGrid<Real, Sint> grid(Real(0), Real(1), n_bit);
+    const Real jump = Real(1) / Real(2);
+    const std::vector<Real> discontinuities{jump};
+    const auto make_value = [](Real re, Real im) -> Scalar {
+        if constexpr (Eigen::NumTraits<Scalar>::IsComplex != 0)
+            return Scalar(re, im);
+        else
+            return re;
+    };
+    const Scalar left_value = make_value(Real(2), Real(3));
+    const Scalar right_value = make_value(Real(5), Real(-1));
+    const auto function = [=](Real x) -> Scalar {
+        return x < jump ? left_value : right_value;
+    };
+
+    TCI2_1D_runner_opts<Scalar> opts{
+        .reltol = Eigen::NumTraits<Real>::epsilon() * Real(100),
+        .pivot1 = grid.coord_to_id(Real(0)),
+        .fullPiv = true,
+        .cache = CacheLevel::none
+    };
+    TCI2_1D_runner_param<Scalar> param(n_bit, 3, 8, opts);
+
+    for (bool use_callback : {false, true}) {
+        const std::string ctx = type_label +
+            (use_callback ? "_left_limit_callback" : "_left_limit_legacy");
+        const std::string prefix = "test/output/" + ctx;
+        Runner runner(grid, param, function);
+        std::vector<Real> callback_points;
+        if (use_callback) {
+            runner.fit({}, false, true, prefix, 16, discontinuities,
+                       [&](Real x) -> Scalar {
+                           callback_points.push_back(x);
+                           return left_value;
+                       });
+        } else {
+            // Deliberately omit the new argument to test the legacy default.
+            runner.fit({}, false, true, prefix, 16, discontinuities);
+        }
+
+        const auto [endpoint, points, values] =
+            load_fvalues_from_json<Complex>(prefix + "_f_values.json");
+        check(endpoint == Runner::to_complex(right_value), ctx,
+              "right endpoint still comes from the original function");
+        check(points == discontinuities, ctx,
+              "discontinuity positions are unchanged");
+        const Scalar expected = use_callback ? left_value : right_value;
+        check(values == std::vector<Complex>{Runner::to_complex(expected)},
+              ctx, use_callback ? "metadata use the left-limit callback"
+                                : "metadata preserve legacy point values");
+        check(callback_points == (use_callback ? discontinuities
+                                               : std::vector<Real>{}),
+              ctx, "callback is used only at the supplied discontinuities");
+
+        xfac_quad::TensorTrain<Complex> tt;
+        tt.M = xfac_quad::load_vector_tensor<Complex>(prefix + ".tt");
+        check(!tt.M.empty(), ctx, "fitted tensor train reloads");
+        if (tt.M.empty()) continue;
+        using std::abs;
+        const Real tol = Eigen::NumTraits<Real>::epsilon() * Real(1e6);
+        bool original_values = true;
+        for (int index = 0; index < (1 << n_bit); ++index) {
+            std::vector<int> id(n_bit);
+            for (int bit = 0; bit < n_bit; ++bit)
+                id[bit] = (index >> bit) & 1;
+            const Complex reference = Runner::to_complex(
+                function(grid.id_to_coord(id)));
+            if (!(abs(tt.eval(id) - reference) <= tol))
+                original_values = false;
+        }
+        check(original_values, ctx,
+              "fit retains the original function, including its right-sided jump");
+    }
+}
+
+// ============================================================
 // All configurations for one scalar type
 // ============================================================
 template <typename Scalar>
@@ -229,6 +316,8 @@ void run_all_configs(const std::string& type_label)
               << "  Testing " << type_label
               << "  (is_complex=" << is_complex << ")\n"
               << "================================================" << std::endl;
+
+    check_left_limit_metadata<Scalar>(type_label);
 
     std::vector<ConfigResult<Scalar>> results;
     for (bool fullPiv : {true, false})

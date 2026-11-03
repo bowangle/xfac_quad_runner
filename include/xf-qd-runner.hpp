@@ -327,7 +327,8 @@ class TCI2_1D_Runner{
         bool do_save = false,
         const std::string& file_prefix="",
         int nb_point_res=1000,
-        const std::vector<Real>& E_discontinuity={}
+        const std::vector<Real>& E_discontinuity={},
+        std::function<Scalar(Real)> left_limit = {}
     ){
         auto log = [&](const std::string& msg) {
             if (logger) {
@@ -402,8 +403,12 @@ class TCI2_1D_Runner{
 
             std::vector<Complex> l_f_discontinuity;
             l_f_discontinuity.reserve(E_discontinuity.size());
-            for (const Real& e : E_discontinuity)
-                l_f_discontinuity.push_back(to_complex(function_x(e)));
+            // The callback supplies one-sided values for metadata only.
+            // Without it, preserve the previous point-value convention.
+            for (const Real& e : E_discontinuity) {
+                const Scalar value = left_limit ? left_limit(e) : function_x(e);
+                l_f_discontinuity.push_back(to_complex(value));
+            }
 
             log("  f_a = " + to_string(f_a));
             log("  f_b = " + to_string(f_b));
